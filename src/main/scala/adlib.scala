@@ -1,14 +1,16 @@
-import net.sf.extjwnl.data.{IndexWord, POS, PointerUtils, Word}
+import net.sf.extjwnl.data.{POS, PointerUtils}
 import net.sf.extjwnl.dictionary.Dictionary
 
-import java.util.Random
+import scala.util.Random
 import scala.util.matching.Regex
 
 /**
- * A word replacement symbol looks like <noun-animal1>, where:
- *  "noun" is the part of speech
- *  "animal" is a category (optional)
- *  "1" is a unique ID, to allow reusing the same replacement word
+ * Word replacement symbols can be:
+ *  - A part of speech (i.e. <noun>)
+ *  - A POS and a category (i.e. <noun-animal>)
+ *  - A POS and a unique numeric ID (i.e. <noun1>)
+ *    This allows re-using the same replacement word multiple times in the text
+ *  - All three (i.e. <noun-animal1>)
  */
 case class WordReplacementSymbol(id: String, pos: POS, category: Option[String])
 
@@ -24,10 +26,10 @@ object WordReplacementSymbol {
   var increment = 0
   
   implicit def fromMatch(m: Regex.Match): WordReplacementSymbol = {
-    val id = Option(m.group(3)).getOrElse({
+    val id = Option(m.group(3)).getOrElse {
       increment += 1
-      "symbol" + increment
-    })
+      "anonymousSymbol" + increment
+    }
 
     WordReplacementSymbol(
       id,
@@ -39,7 +41,6 @@ object WordReplacementSymbol {
 
 class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) {
   val debug = true
-  val random = new Random
   
   def getReplacementForSymbol(symbol: WordReplacementSymbol): String = {
     symbol.category match {
@@ -48,11 +49,12 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
       // If a category is defined, draw from a list of hyponyms for the given category
       case Some(category) => {
         val hypernym = dict.getIndexWord(symbol.pos, category)
+        if (debug) println(s" Finding hyponym for ${hypernym.getLemma}")
         val hyponymTree = PointerUtils.getHyponymTree(hypernym.getSenses.get(0)).toList
-        val hyponymBranch = hyponymTree.get(random.nextInt(hyponymTree.size))
+        val hyponymBranch = hyponymTree.get(Random.nextInt(hyponymTree.size))
         if (debug) hyponymBranch.print()
         val synonyms = hyponymBranch.getLast.getSynset.getWords
-        synonyms.get(random.nextInt(synonyms.size)).getLemma
+        synonyms.get(Random.nextInt(synonyms.size)).getLemma
       }
     }
   }
@@ -63,7 +65,7 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
 }
 
 object AdLib extends App {
-  val testString = "In a <noun-object> in the <noun-object> there lived a <noun-creature>."
+  val testString = "In a <noun-place> in the <noun-place> there lived a <noun-creature>."
   val parser = new AdLibParser
   println(parser.parseText(testString))
 }
