@@ -1,6 +1,8 @@
 import net.sf.extjwnl.data.{POS, PointerUtils}
 import net.sf.extjwnl.dictionary.Dictionary
 
+import scala.collection.mutable.Map
+import scala.language.postfixOps
 import scala.util.Random
 import scala.util.matching.Regex
 
@@ -30,16 +32,23 @@ object WordReplacementSymbol {
   private var increment = 0
   
   implicit def fromMatch(m: Regex.Match): WordReplacementSymbol = {
-    val id = Option(m.group(3)).getOrElse {
+    val idString = m.group(3)
+    val pos = POS.getPOSForLabel(m.group(1))
+    val category = Option(m.group(2))
+    
+    // Make sure ID will be unique for all possible matching symbols
+    val id = if (idString == null || idString.isEmpty) {
       increment += 1
-      "anonymousSymbol" + increment
+      s"anonymousSymbol$increment"
+    } else {
+      val categoryString = category match {
+        case Some(s) => s"-$s"
+        case None => ""
+      }
+      s"${pos.getLabel}${categoryString}${idString}"
     }
-
-    WordReplacementSymbol(
-      id,
-      POS.getPOSForLabel(m.group(1)),
-      Option(m.group(2))
-    )
+    
+    WordReplacementSymbol(id, pos, category)
   }
 }
 
@@ -50,16 +59,19 @@ object WordReplacementSymbol {
  */
 class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) {
   val debug = true
+  val symbolMap: Map[String, String] = Map()
   
   /**
    * Given a word replacement symbol, generates a matching random word
    */
   def getReplacementForSymbol(symbol: WordReplacementSymbol): String = {
-    symbol.category match {
+    val replacement = symbol match {
+      // If the symbol already exists in our symbol map, re-use the existing replacement
+      case s if symbolMap.contains(s.id) => symbolMap.get(s.id).get
       // If no category is defined, draw from all words with the given part-of-speech
-      case None => dict.getRandomIndexWord(symbol.pos).getLemma
+      case WordReplacementSymbol(_, _, None) => dict.getRandomIndexWord(symbol.pos).getLemma
       // If a category is defined, draw from a list of hyponyms for the given category
-      case Some(category) => {
+      case WordReplacementSymbol(_, _, Some(category)) => {
         val hypernym = dict.getIndexWord(symbol.pos, category)
         if (debug) println(s" Finding hyponym for ${hypernym.getLemma}")
         val hyponymTree = PointerUtils.getHyponymTree(hypernym.getSenses.get(0)).toList
@@ -69,6 +81,8 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
         synonyms.get(Random.nextInt(synonyms.size)).getLemma
       }
     }
+    symbolMap += (symbol.id -> replacement)
+    replacement
   }
   
   /**
@@ -80,7 +94,10 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
 }
 
 object AdLib extends App {
-  val testString = "In a <noun-place> in the <noun-place> there lived a <noun-creature>."
+  val testString = "In a <noun-object1> in the <noun-object> there lived a <noun-creature1>. Not a <adjective>, " +
+    "<adjective>, <adjective> <noun-object1>, filled with the ends of <noun-creature>s and a <adjective> smell, nor " +
+    "yet a <adjective>, <adjective>, <adjective> <noun-object1> with nothing in it to <verb> on or to <verb>; " +
+    "it was a <noun-creature1>-<noun-object1>, and that means <noun-attribute>."
   val parser = new AdLibParser
   println(parser.parseText(testString))
 }
