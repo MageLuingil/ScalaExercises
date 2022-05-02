@@ -2,7 +2,7 @@ import net.sf.extjwnl.data.{POS, PointerUtils}
 import net.sf.extjwnl.dictionary.Dictionary
 
 import scala.collection.mutable.Map
-import scala.language.postfixOps
+import scala.io.Source
 import scala.util.Random
 import scala.util.matching.Regex
 
@@ -93,11 +93,13 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
   }
 }
 
-object AdLib extends App {
-  val testString = "In a <noun-object1> in the <noun-object> there lived a <noun-creature1>. Not a <adjective>, " +
-    "<adjective>, <adjective> <noun-object1>, filled with the ends of <noun-creature>s and a <adjective> smell, nor " +
-    "yet a <adjective>, <adjective>, <adjective> <noun-object1> with nothing in it to <verb> on or to <verb>; " +
-    "it was a <noun-creature1>-<noun-object1>, and that means <noun-attribute>."
-  val parser = new AdLibParser
-  println(parser.parseText(testString))
+object AdLib {
+  def main(args: Array[String]) = {
+    val parser = new AdLibParser
+
+    args.foreach { arg =>
+      val inputText = Source.fromFile(arg).mkString
+      println(parser.parseText(inputText))
+    }
+  }
 }
