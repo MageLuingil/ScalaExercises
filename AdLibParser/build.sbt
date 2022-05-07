@@ -1,6 +1,6 @@
-name := "ad-libs"
+name := "AdLibParser"
 
-version := "0.1"
+version := "1.0"
 
 scalaVersion := "3.1.2"
 

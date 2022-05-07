@@ -2,9 +2,10 @@ import net.sf.extjwnl.data.relationship.RelationshipFinder
 import net.sf.extjwnl.data.{POS, PointerType, PointerUtils, Synset}
 import net.sf.extjwnl.dictionary.Dictionary
 
-import scala.collection.mutable.Map
+import scala.collection.mutable
 import scala.io.Source
 import scala.jdk.CollectionConverters.*
+import scala.language.implicitConversions
 import scala.util.Random
 import scala.util.matching.Regex
 
@@ -46,7 +47,7 @@ object WordReplacementSymbol {
    *  3: category sense (optional)
    *  4: id (optional)
    */
-  val regex = "<(noun|verb|adjective|adverb)(?:-([A-Za-z]+))?(?:-([A-Za-z]+))?(\\d?)>".r
+  val regex: Regex = "<(noun|verb|adjective|adverb)(?:-([A-Za-z]+))?(?:-([A-Za-z]+))?(\\d?)>".r
   
   private var increment = 0
   
@@ -83,7 +84,7 @@ object WordReplacementSymbol {
  */
 class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) {
   val debug = true
-  val symbolMap: Map[String, String] = Map()
+  val symbolMap: mutable.Map[String, String] = mutable.Map()
   
   /**
    * Given a word replacement symbol, generates a matching random word
@@ -91,7 +92,7 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
   def getReplacementForSymbol(symbol: WordReplacementSymbol): String = {
     val replacement = symbol match {
       // If the symbol already exists in our symbol map, re-use the existing replacement
-      case s if symbolMap.contains(s.id) => symbolMap.get(s.id).get
+      case s if symbolMap.contains(s.id) => symbolMap(s.id)
       // If no category is defined, draw from all words with the given part-of-speech
       case WordReplacementSymbol(_, _, (None, _)) => dict.getRandomIndexWord(symbol.pos).getLemma
       // If a category is defined, draw from a list of hyponyms for the given category
@@ -118,11 +119,11 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
     val hypernym = sense.flatMap { senseStr =>
       val possibleSenses: List[Synset] = dict.getIndexWord(pos, senseStr).getSenses 
       possibleCategories.find { category =>
-        possibleSenses.find { senseDef =>
+        possibleSenses.exists{ senseDef =>
           RelationshipFinder.findRelationships(category, senseDef, PointerType.HYPONYM).nonEmpty
-        }.nonEmpty
+        }
       }
-    }.getOrElse(possibleCategories(0))
+    }.getOrElse(possibleCategories.head)
     // Find a random value in the tree of hyponyms
     val hyponymTree = PointerUtils.getHyponymTree(hypernym)
     val hyponymBranch = hyponymTree(Random.nextInt(hyponymTree.size))
@@ -141,11 +142,14 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
 }
 
 object AdLib {
-  def main(args: Array[String]) = {
+  def main(args: Array[String]): Unit = {
     val parser = new AdLibParser
 
     args.foreach { arg =>
-      val inputText = Source.fromFile(arg).mkString
+      val sourceFile = Source.fromFile(arg)
+      val inputText = sourceFile.mkString
+      sourceFile.close
+      
       println(parser.parseText(inputText))
     }
   }
