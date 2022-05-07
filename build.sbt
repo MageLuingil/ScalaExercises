@@ -8,3 +8,5 @@ lazy val root = (project in file("."))
   )
 
 lazy val AdLibParser = (project in file("AdLibParser"))
+
+lazy val CharSequenceBuilder = (project in file("CharSequenceBuilder"))
