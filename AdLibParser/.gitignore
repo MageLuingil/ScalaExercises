@@ -1,0 +1,8 @@
+# scala & sbt
+.bsp/
+project/project/
+project/target/
+target/
+
+# intellij idea
+.idea/
