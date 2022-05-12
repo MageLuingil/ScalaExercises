@@ -1,3 +1,4 @@
+import net.sf.extjwnl.data.list.PointerTargetNodeList
 import net.sf.extjwnl.data.relationship.RelationshipFinder
 import net.sf.extjwnl.data.{POS, PointerType, PointerUtils, Synset}
 import net.sf.extjwnl.dictionary.Dictionary
@@ -18,8 +19,10 @@ implicit def convertWordList(words: java.util.List[net.sf.extjwnl.data.Word]): L
   words.asScala.toList
 implicit def convertWordArrayList(words: java.util.ArrayList[net.sf.extjwnl.data.Word]): List[net.sf.extjwnl.data.Word] =
   words.asScala.toList
-implicit def convertPointerTargetTreeToList(tree: net.sf.extjwnl.data.list.PointerTargetTree): List[net.sf.extjwnl.data.list.PointerTargetNodeList] =
+implicit def convertPointerTargetTree(tree: net.sf.extjwnl.data.list.PointerTargetTree): List[net.sf.extjwnl.data.list.PointerTargetNodeList] =
   tree.toList.asScala.toList
+implicit def convertPointerTargetNodeList(branch: net.sf.extjwnl.data.list.PointerTargetNodeList): Seq[net.sf.extjwnl.data.list.PointerTargetNode] =
+  branch.asScala.toSeq
 implicit def convertRelationshipList(relationship: java.util.ArrayList[net.sf.extjwnl.data.relationship.Relationship]): List[net.sf.extjwnl.data.relationship.Relationship] =
   relationship.asScala.toList
 
@@ -63,14 +66,9 @@ object WordReplacementSymbol {
     // Make sure ID will be unique for all possible matching symbols
     val id = if (idString == null || idString.isEmpty) {
       increment += 1
-      s"anonymousSymbol$increment"
+      s"anonymousSymbol/$increment"
     } else {
-      val categoryLabel = category match {
-        case (Some(cat), Some(sense)) => s"-$cat-$sense"
-        case (Some(cat), None) => s"-$cat"
-        case (None, _) => ""
-      }
-      s"${pos.getLabel}${categoryLabel}${idString}"
+      Seq(Some(pos.getLabel), category._1, category._2, Option(idString)).flatten.mkString("/")
     }
     
     WordReplacementSymbol(id, pos, category)
@@ -85,6 +83,12 @@ object WordReplacementSymbol {
 class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) {
   val debug = true
   val symbolMap: mutable.Map[String, String] = mutable.Map()
+
+  /**
+   * Naive scientific notation pattern match
+   * Used to remove scientific names, because they don't work well in the output
+   */
+  private val scientificNotationRegex = "^[A-Z][a-z]+ [a-z]+$".r
   
   /**
    * Given a word replacement symbol, generates a matching random word
@@ -113,13 +117,13 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
     if (debug) println(s" Finding hyponym for $category: $sense")
     // Since words can have multiple meanings, we get a collection of possible matches for the category word
     val possibleCategories: List[Synset] = dict.getIndexWord(pos, category).getSenses
-    // Using a list of posible meanings for the category word, and a list of possible meanings for the sense word, find
+    // Using a list of possible meanings for the category word, and a list of possible meanings for the sense word, find
     // a relationship between the two. The presence of a relationship should indicate we've found the correct sense of
     // the category word to use.
     val hypernym = sense.flatMap { senseStr =>
       val possibleSenses: List[Synset] = dict.getIndexWord(pos, senseStr).getSenses 
       possibleCategories.find { category =>
-        possibleSenses.exists{ senseDef =>
+        possibleSenses.exists { senseDef =>
           RelationshipFinder.findRelationships(category, senseDef, PointerType.HYPONYM).nonEmpty
         }
       }
@@ -128,8 +132,14 @@ class AdLibParser(val dict: Dictionary = Dictionary.getDefaultResourceInstance) 
     val hyponymTree = PointerUtils.getHyponymTree(hypernym)
     val hyponymBranch = hyponymTree(Random.nextInt(hyponymTree.size))
     if (debug) hyponymBranch.print()
-    // Use a random synonym from the last node on the branch
-    val synonyms = hyponymBranch.getLast.getSynset.getWords
+    // Find the last node on the branch that does *not* consist solely of a scientific name
+    val synonyms = hyponymBranch.foldRight [List[net.sf.extjwnl.data.Word]] (List()) { (node, filteredWords) =>
+      if (filteredWords.nonEmpty) {
+        filteredWords
+      } else {
+        node.getSynset.getWords.filterNot { word => scientificNotationRegex.matches(word.getLemma) }
+      }
+    }
     synonyms(Random.nextInt(synonyms.size)).getLemma
   }
   
